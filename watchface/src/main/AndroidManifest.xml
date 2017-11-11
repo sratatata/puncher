@@ -19,7 +19,7 @@
             android:value="true" />
 
         <service
-            android:name=".PunchInOut"
+            android:name=".WatchFace"
             android:label="@string/my_digital_name"
             android:permission="android.permission.BIND_WALLPAPER">
             <meta-data
