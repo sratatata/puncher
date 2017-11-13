@@ -26,6 +26,7 @@ import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Rect;
 import android.graphics.Typeface;
+import android.os.BatteryManager;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
@@ -45,8 +46,7 @@ import java.util.concurrent.TimeUnit;
  * low-bit ambient mode, the text is drawn without anti-aliasing in ambient mode.
  */
 public class WatchFace extends CanvasWatchFaceService {
-    private static final Typeface NORMAL_TYPEFACE =
-            Typeface.create(Typeface.SANS_SERIF, Typeface.NORMAL);
+    private Typeface font;
 
     /**
      * Update rate in milliseconds for interactive mode. We update once a second since seconds are
@@ -102,6 +102,9 @@ public class WatchFace extends CanvasWatchFaceService {
         float mYOffset;
         float mXOffsetAmbient;
 
+        float mXBattery;
+        float mYBattery;
+
 
         /**
          * Whether the display supports fewer bits for each color in ambient mode. When true, we
@@ -115,6 +118,9 @@ public class WatchFace extends CanvasWatchFaceService {
         public void onCreate(SurfaceHolder holder) {
             super.onCreate(holder);
 
+
+            font = Typeface.createFromAsset(getApplicationContext().getAssets(),"fonts/pico-8_mono.ttf");
+
             setWatchFaceStyle(new WatchFaceStyle.Builder(WatchFace.this)
                     .setCardPeekMode(WatchFaceStyle.PEEK_MODE_VARIABLE)
                     .setBackgroundVisibility(WatchFaceStyle.BACKGROUND_VISIBILITY_INTERRUPTIVE)
@@ -123,6 +129,8 @@ public class WatchFace extends CanvasWatchFaceService {
                     .build());
             Resources resources = WatchFace.this.getResources();
             mYOffset = resources.getDimension(R.dimen.digital_y_offset);
+            mXBattery = resources.getDimension(R.dimen.battery_x);
+            mYBattery = resources.getDimension(R.dimen.battery_y);
 
             mBackgroundPaint = new Paint();
             mBackgroundPaint.setColor(resources.getColor(R.color.background));
@@ -167,7 +175,7 @@ public class WatchFace extends CanvasWatchFaceService {
         private Paint createTextPaint(int textColor) {
             Paint paint = new Paint();
             paint.setColor(textColor);
-            paint.setTypeface(NORMAL_TYPEFACE);
+            paint.setTypeface(font);
             paint.setAntiAlias(true);
             return paint;
         }
@@ -304,9 +312,30 @@ public class WatchFace extends CanvasWatchFaceService {
             } else {
                 text = String.format("%02d:%02d:%02d", mCalendar.get(Calendar.HOUR_OF_DAY), mCalendar.get(Calendar.MINUTE), mCalendar.get(Calendar.SECOND));
                 canvas.drawText(text, mXOffset, mYOffset, mTextPaint);
+
+                //todo refactor
+                float level = getBatteryLevel();
+                Paint paint = new Paint();
+                if (level < 15f) {
+                    //green
+                    paint.setColor(getResources().getColor(R.color.digital_text_1));
+                }else {
+                    //red
+                    paint.setColor(getResources().getColor(R.color.digital_text_2));
+                }
+                paint.setAntiAlias(true);
+                paint.setStrokeWidth(10f);
+
+                float length = 300f;
+                length = length*getBatteryLevel();
+                canvas.drawLine(mXBattery, mYBattery, mXBattery+length, mYBattery, paint);
             }
 
+
+
         }
+
+
 
         /**
          * Starts the {@link #mUpdateTimeHandler} timer if it should be running and isn't currently
@@ -339,5 +368,17 @@ public class WatchFace extends CanvasWatchFaceService {
                 mUpdateTimeHandler.sendEmptyMessageDelayed(MSG_UPDATE_TIME, delayMs);
             }
         }
+    }
+
+    private float getBatteryLevel(){
+        IntentFilter ifilter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
+        Intent batteryStatus = this.getApplicationContext().registerReceiver(null, ifilter);
+
+        int level = batteryStatus.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
+        int scale = batteryStatus.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
+
+        float batteryPct = level / (float)scale;
+
+        return batteryPct;
     }
 }
