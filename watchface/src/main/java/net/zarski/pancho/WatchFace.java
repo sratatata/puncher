@@ -102,10 +102,6 @@ public class WatchFace extends CanvasWatchFaceService {
         float mYOffset;
         float mXOffsetAmbient;
 
-        float mXBattery;
-        float mYBattery;
-
-
         /**
          * Whether the display supports fewer bits for each color in ambient mode. When true, we
          * disable anti-aliasing in ambient mode.
@@ -113,6 +109,7 @@ public class WatchFace extends CanvasWatchFaceService {
         boolean mLowBitAmbient;
         private TapCounter counter;
         private Puncher puncher;
+        private BatteryLevelIndicator batteryLevelIndicator;
 
         @Override
         public void onCreate(SurfaceHolder holder) {
@@ -129,8 +126,9 @@ public class WatchFace extends CanvasWatchFaceService {
                     .build());
             Resources resources = WatchFace.this.getResources();
             mYOffset = resources.getDimension(R.dimen.digital_y_offset);
-            mXBattery = resources.getDimension(R.dimen.battery_x);
-            mYBattery = resources.getDimension(R.dimen.battery_y);
+
+            batteryLevelIndicator = new BatteryLevelIndicator(getApplicationContext());
+            batteryLevelIndicator.onCreate(resources);
 
             mBackgroundPaint = new Paint();
             mBackgroundPaint.setColor(resources.getColor(R.color.background));
@@ -313,22 +311,7 @@ public class WatchFace extends CanvasWatchFaceService {
                 text = String.format("%02d:%02d:%02d", mCalendar.get(Calendar.HOUR_OF_DAY), mCalendar.get(Calendar.MINUTE), mCalendar.get(Calendar.SECOND));
                 canvas.drawText(text, mXOffset, mYOffset, mTextPaint);
 
-                //todo refactor
-                float level = getBatteryLevel();
-                Paint paint = new Paint();
-                if (level < 15f) {
-                    //green
-                    paint.setColor(getResources().getColor(R.color.digital_text_1));
-                }else {
-                    //red
-                    paint.setColor(getResources().getColor(R.color.digital_text_2));
-                }
-                paint.setAntiAlias(true);
-                paint.setStrokeWidth(10f);
-
-                float length = 300f;
-                length = length*getBatteryLevel();
-                canvas.drawLine(mXBattery, mYBattery, mXBattery+length, mYBattery, paint);
+                batteryLevelIndicator.draw(canvas);
             }
 
 
@@ -370,15 +353,5 @@ public class WatchFace extends CanvasWatchFaceService {
         }
     }
 
-    private float getBatteryLevel(){
-        IntentFilter ifilter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
-        Intent batteryStatus = this.getApplicationContext().registerReceiver(null, ifilter);
 
-        int level = batteryStatus.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
-        int scale = batteryStatus.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
-
-        float batteryPct = level / (float)scale;
-
-        return batteryPct;
-    }
 }
