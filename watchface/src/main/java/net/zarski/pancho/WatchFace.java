@@ -1,19 +1,3 @@
-/*
- * Copyright (C) 2017 The Android Open Source Project
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
 package net.zarski.pancho;
 
 import android.content.BroadcastReceiver;
@@ -22,11 +6,7 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.res.Resources;
 import android.graphics.Canvas;
-import android.graphics.Color;
-import android.graphics.Paint;
 import android.graphics.Rect;
-import android.graphics.Typeface;
-import android.os.BatteryManager;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
@@ -37,27 +17,19 @@ import android.view.WindowInsets;
 import android.widget.Toast;
 
 import java.lang.ref.WeakReference;
-import java.util.Calendar;
-import java.util.TimeZone;
 import java.util.concurrent.TimeUnit;
 
-/**
- * Digital watch face with seconds. In ambient mode, the seconds aren't displayed. On devices with
- * low-bit ambient mode, the text is drawn without anti-aliasing in ambient mode.
- */
 public class WatchFace extends CanvasWatchFaceService {
-    private Typeface font;
-
     /**
      * Update rate in milliseconds for interactive mode. We update once a second since seconds are
      * displayed in interactive mode.
      */
     private static final long INTERACTIVE_UPDATE_RATE_MS = TimeUnit.SECONDS.toMillis(1);
-
     /**
      * Handler message id for updating the time periodically in interactive mode.
      */
     private static final int MSG_UPDATE_TIME = 0;
+
 
     @Override
     public Engine onCreateEngine() {
@@ -67,7 +39,7 @@ public class WatchFace extends CanvasWatchFaceService {
     private static class EngineHandler extends Handler {
         private final WeakReference<WatchFace.Engine> mWeakReference;
 
-        public EngineHandler(WatchFace.Engine reference) {
+        EngineHandler(WatchFace.Engine reference) {
             mWeakReference = new WeakReference<>(reference);
         }
 
@@ -84,39 +56,29 @@ public class WatchFace extends CanvasWatchFaceService {
         }
     }
 
-    private class Engine extends CanvasWatchFaceService.Engine {
-        final Handler mUpdateTimeHandler = new EngineHandler(this);
-        boolean mRegisteredTimeZoneReceiver = false;
-        Paint mBackgroundPaint;
-        Paint mTextPaint;
-        boolean mAmbient;
-        Calendar mCalendar;
+    class Engine extends CanvasWatchFaceService.Engine {
+        private final Handler mUpdateTimeHandler = new EngineHandler(this);
+        private boolean mRegisteredTimeZoneReceiver = false;
+        private boolean mAmbient;
+
+        private TapCounter counter;
+        private Puncher puncher;
+        private Clock clock;
+        private Background background;
+        private BatteryLevelIndicator batteryLevelIndicator;
+
+
         final BroadcastReceiver mTimeZoneReceiver = new BroadcastReceiver() {
             @Override
             public void onReceive(Context context, Intent intent) {
-                mCalendar.setTimeZone(TimeZone.getDefault());
+                clock.update();
                 invalidate();
             }
         };
-        float mXOffset;
-        float mYOffset;
-        float mXOffsetAmbient;
-
-        /**
-         * Whether the display supports fewer bits for each color in ambient mode. When true, we
-         * disable anti-aliasing in ambient mode.
-         */
-        boolean mLowBitAmbient;
-        private TapCounter counter;
-        private Puncher puncher;
-        private BatteryLevelIndicator batteryLevelIndicator;
 
         @Override
         public void onCreate(SurfaceHolder holder) {
             super.onCreate(holder);
-
-
-            font = Typeface.createFromAsset(getApplicationContext().getAssets(),"fonts/pico-8_mono.ttf");
 
             setWatchFaceStyle(new WatchFaceStyle.Builder(WatchFace.this)
                     .setCardPeekMode(WatchFaceStyle.PEEK_MODE_VARIABLE)
@@ -124,43 +86,49 @@ public class WatchFace extends CanvasWatchFaceService {
                     .setShowSystemUiTime(false)
                     .setAcceptsTapEvents(true)
                     .build());
-            Resources resources = WatchFace.this.getResources();
-            mYOffset = resources.getDimension(R.dimen.digital_y_offset);
 
-            batteryLevelIndicator = new BatteryLevelIndicator(getApplicationContext());
-            batteryLevelIndicator.onCreate(resources);
+            background = new Background();
+            background.onCreate(WatchFace.this);
 
-            mBackgroundPaint = new Paint();
-            mBackgroundPaint.setColor(resources.getColor(R.color.background));
+            clock = new Clock();
+            clock.onCreate(WatchFace.this);
 
-            mTextPaint = new Paint();
-            mTextPaint = createTextPaint(resources.getColor(R.color.digital_text_2));
+            batteryLevelIndicator = new BatteryLevelIndicator(WatchFace.this);
+            batteryLevelIndicator.onCreate(WatchFace.this);
 
-            mCalendar = Calendar.getInstance();
+            counter = createCounter();
 
+            puncher = createPuncher();
 
-            counter = new TapCounter(6);
+        }
+
+        private TapCounter createCounter() {
+            TapCounter counter = new TapCounter(6);
             counter.setListener((tapType, x, y, eventTime) -> {
-                if(puncher.isPunchIn()) {
-                    puncher.punchOut(getApplicationContext());
-                }else{
-                    puncher.punchIn(getApplicationContext());
+                if (puncher.isPunchIn()) {
+                    puncher.punchOut(WatchFace.this);
+                } else {
+                    puncher.punchIn(WatchFace.this);
                 }
             });
 
-            puncher = new Puncher(getApplicationContext());
+            return counter;
+        }
+
+        private Puncher createPuncher(){
+            Puncher puncher = new Puncher(WatchFace.this);
             puncher.setPunchInListener(() -> {
-                Toast.makeText(getApplicationContext(), "Punch in", Toast.LENGTH_SHORT)
+                Toast.makeText(WatchFace.this, "Punch in", Toast.LENGTH_SHORT)
                         .show();
-                mTextPaint.setColor(getResources().getColor(R.color.digital_text_1));
+                clock.setPaint(R.color.digital_text_punched);
             });
 
             puncher.setPunchOutListener(() -> {
-                Toast.makeText(getApplicationContext(), "Punch out", Toast.LENGTH_SHORT)
+                Toast.makeText(WatchFace.this, "Punch out", Toast.LENGTH_SHORT)
                         .show();
-                mTextPaint.setColor(getResources().getColor(R.color.digital_text_2));
+                clock.setPaint(R.color.digital_text_default);
             });
-
+            return puncher;
         }
 
         @Override
@@ -170,26 +138,19 @@ public class WatchFace extends CanvasWatchFaceService {
             super.onDestroy();
         }
 
-        private Paint createTextPaint(int textColor) {
-            Paint paint = new Paint();
-            paint.setColor(textColor);
-            paint.setTypeface(font);
-            paint.setAntiAlias(true);
-            return paint;
-        }
 
         @Override
         public void onVisibilityChanged(boolean visible) {
             super.onVisibilityChanged(visible);
 
-            if (visible) {
-                registerReceiver();
+            background.onVisibilityChanged(visible);
+            clock.onVisibilityChanged(visible);
 
-                // Update time zone in case it changed while we weren't visible.
-                mCalendar.setTimeZone(TimeZone.getDefault());
-                invalidate();
+            if (visible) {
+                this.registerReceiver();
+                this.invalidate();
             } else {
-                unregisterReceiver();
+                this.unregisterReceiver();
             }
 
             // Whether the timer should be running depends on whether we're visible (as well as
@@ -218,31 +179,14 @@ public class WatchFace extends CanvasWatchFaceService {
         public void onApplyWindowInsets(WindowInsets insets) {
             super.onApplyWindowInsets(insets);
 
-            // Load resources that have alternate values for round watches.
-            Resources resources = WatchFace.this.getResources();
-
-            boolean isRound = insets.isRound();
-            if (isRound) {
-                mXOffset = resources.getDimension(R.dimen.digital_x_offset_round);
-                mXOffsetAmbient = resources.getDimension(R.dimen.digital_x_offset_round_ambient);
-            } else {
-                mXOffset = resources.getDimension(R.dimen.digital_x_offset);
-            }
-
-            float textSize;
-            if (isRound) {
-                textSize = resources.getDimension(R.dimen.digital_text_size_round);
-            } else {
-                textSize = resources.getDimension(R.dimen.digital_text_size);
-            }
-
-            mTextPaint.setTextSize(textSize);
+            clock.onApplyWindowInsets(insets);
         }
 
         @Override
         public void onPropertiesChanged(Bundle properties) {
             super.onPropertiesChanged(properties);
-            mLowBitAmbient = properties.getBoolean(PROPERTY_LOW_BIT_AMBIENT, false);
+            boolean mLowBitAmbient = properties.getBoolean(PROPERTY_LOW_BIT_AMBIENT, false);
+            clock.setLowBitAmbient(mLowBitAmbient);
         }
 
         @Override
@@ -256,9 +200,8 @@ public class WatchFace extends CanvasWatchFaceService {
             super.onAmbientModeChanged(inAmbientMode);
             if (mAmbient != inAmbientMode) {
                 mAmbient = inAmbientMode;
-                if (mLowBitAmbient) {
-                    mTextPaint.setAntiAlias(!inAmbientMode);
-                }
+                clock.setAmbientMode(inAmbientMode);
+                background.setAmbientMode(inAmbientMode);
                 invalidate();
             }
 
@@ -268,11 +211,6 @@ public class WatchFace extends CanvasWatchFaceService {
         }
 
 
-
-        /**
-         * Captures tap event (and tap type) and toggles the background color if the user finishes
-         * a tap.
-         */
         @Override
         public void onTapCommand(int tapType, int x, int y, long eventTime) {
             switch (tapType) {
@@ -283,7 +221,7 @@ public class WatchFace extends CanvasWatchFaceService {
                     // The user has started a different gesture or otherwise cancelled the tap.
                     break;
                 case TAP_TYPE_TAP:
-                    counter.tap(tapType,x,y,eventTime);
+                    counter.tap(tapType, x, y, eventTime);
                     break;
             }
             invalidate();
@@ -291,33 +229,14 @@ public class WatchFace extends CanvasWatchFaceService {
 
         @Override
         public void onDraw(Canvas canvas, Rect bounds) {
-            // Draw the background.
-            if (isInAmbientMode()) {
-                canvas.drawColor(Color.BLACK);
-            } else {
-                canvas.drawRect(0, 0, bounds.width(), bounds.height(), mBackgroundPaint);
+            background.draw(canvas, bounds);
+
+            clock.draw(canvas, bounds);
+
+            if (!mAmbient) {
+                batteryLevelIndicator.draw(canvas, bounds);
             }
-
-            // Draw H:MM in ambient mode or H:MM:SS in interactive mode.
-            long now = System.currentTimeMillis();
-            mCalendar.setTimeInMillis(now);
-
-            String text;
-
-            if (mAmbient) {
-                text = String.format("%02d:%02d", mCalendar.get(Calendar.HOUR_OF_DAY), mCalendar.get(Calendar.MINUTE));
-                canvas.drawText(text, mXOffsetAmbient, mYOffset, mTextPaint);
-            } else {
-                text = String.format("%02d:%02d:%02d", mCalendar.get(Calendar.HOUR_OF_DAY), mCalendar.get(Calendar.MINUTE), mCalendar.get(Calendar.SECOND));
-                canvas.drawText(text, mXOffset, mYOffset, mTextPaint);
-
-                batteryLevelIndicator.draw(canvas);
-            }
-
-
-
         }
-
 
 
         /**
